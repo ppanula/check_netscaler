@@ -250,6 +250,56 @@ class TestThresholdCommand:
         assert "WARNING" in result.message
         assert len(result.long_output) == 3
 
+    def test_system_cpu_summary_output_ok(self):
+        """Test NetScaler CPU checks use a concise MGMT/PE CPU summary."""
+        client = self.create_mock_client()
+        client.get_stat.return_value = {
+            "system": [
+                {
+                    "mgmtcpuusagepcnt": 0.3,
+                    "pktcpuusagepcnt": 11.7,
+                }
+            ]
+        }
+
+        args = self.create_args(
+            command="above",
+            objectname="mgmtcpuusagepcnt,pktcpuusagepcnt",
+            warning="90",
+            critical="99",
+        )
+        command = ThresholdCommand(client, args)
+        result = command.execute()
+
+        assert result.status == STATE_OK
+        assert result.message == "MGMT CPU 0.3%, PE CPU 11.7% (warn=90, crit=99)"
+        assert result.long_output == []
+
+    def test_system_cpu_summary_output_warning(self):
+        """Test NetScaler CPU checks keep the concise summary in WARNING state."""
+        client = self.create_mock_client()
+        client.get_stat.return_value = {
+            "system": [
+                {
+                    "mgmtcpuusagepcnt": 91.2,
+                    "pktcpuusagepcnt": 11.7,
+                }
+            ]
+        }
+
+        args = self.create_args(
+            command="above",
+            objectname="mgmtcpuusagepcnt,pktcpuusagepcnt",
+            warning="90",
+            critical="99",
+        )
+        command = ThresholdCommand(client, args)
+        result = command.execute()
+
+        assert result.status == STATE_WARNING
+        assert result.message == "MGMT CPU 91.2%, PE CPU 11.7% (warn=90, crit=99)"
+        assert result.long_output == []
+
     # Error cases
 
     def test_no_objecttype(self):

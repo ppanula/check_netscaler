@@ -18,6 +18,11 @@ from check_netscaler.constants import (
 class ThresholdCommand(BaseCommand):
     """Check if values are above or below thresholds"""
 
+    SYSTEM_CPU_FIELD_LABELS = {
+        "mgmtcpuusagepcnt": "MGMT CPU",
+        "pktcpuusagepcnt": "PE CPU",
+    }
+
     def __init__(self, client, args):
         super().__init__(client, args)
         self.mode = args.command  # 'above' or 'below'
@@ -208,12 +213,16 @@ class ThresholdCommand(BaseCommand):
         # Build message
         message = self._build_message(
             objecttype,
+            fields,
             critical_fields,
             warning_fields,
             ok_fields,
             warn_threshold,
             crit_threshold,
         )
+
+        if self._is_system_cpu_summary(fields, objecttype):
+            long_output = []
 
         return CheckResult(
             status=overall_status,
@@ -225,6 +234,7 @@ class ThresholdCommand(BaseCommand):
     def _build_message(
         self,
         objecttype: str,
+        fields: List[str],
         critical_fields: List[tuple],
         warning_fields: List[tuple],
         ok_fields: List[tuple],
@@ -232,6 +242,15 @@ class ThresholdCommand(BaseCommand):
         crit_threshold: float,
     ) -> str:
         """Build status message"""
+        if self._is_system_cpu_summary(fields, objecttype):
+            return self._build_system_cpu_message(
+                critical_fields,
+                warning_fields,
+                ok_fields,
+                warn_threshold,
+                crit_threshold,
+            )
+
         parts = []
 
         if critical_fields:
@@ -254,3 +273,43 @@ class ThresholdCommand(BaseCommand):
         parts.append(f"(warn={warn_threshold}, crit={crit_threshold})")
 
         return " ".join(parts)
+
+    def _is_system_cpu_summary(self, fields: List[str], objecttype: str) -> bool:
+        """Return True for the NetScaler CPU dual-metric check."""
+        return (
+            objecttype == "system"
+            and self.mode == "above"
+            and set(fields) == set(self.SYSTEM_CPU_FIELD_LABELS)
+            and len(fields) == len(self.SYSTEM_CPU_FIELD_LABELS)
+        )
+
+    def _build_system_cpu_message(
+        self,
+        critical_fields: List[tuple],
+        warning_fields: List[tuple],
+        ok_fields: List[tuple],
+        warn_threshold: float,
+        crit_threshold: float,
+    ) -> str:
+        """Build a concise summary for the NetScaler CPU check."""
+        metric_values = {}
+        for field, value in critical_fields + warning_fields + ok_fields:
+            metric_values[field] = value
+
+        parts = []
+        for field in ("mgmtcpuusagepcnt", "pktcpuusagepcnt"):
+            if field not in metric_values:
+                continue
+            parts.append(
+                f"{self.SYSTEM_CPU_FIELD_LABELS[field]} {self._format_number(metric_values[field])}%"
+            )
+
+        parts.append(
+            f"(warn={self._format_number(warn_threshold)}, crit={self._format_number(crit_threshold)})"
+        )
+
+        return ", ".join(parts[:-1]) + " " + parts[-1] if len(parts) > 1 else parts[0]
+
+    def _format_number(self, value: float) -> str:
+        """Format numeric values without unnecessary trailing zeros."""
+        return f"{value:g}"
