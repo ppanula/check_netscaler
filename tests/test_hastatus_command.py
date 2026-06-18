@@ -311,8 +311,8 @@ class TestHAStatusCommand:
         assert result.status == STATE_CRITICAL
         assert "UNKNOWN_STATE" in result.message
 
-    def test_ha_sync_failures_warning(self):
-        """Test HA with sync failures (WARNING)"""
+    def test_ha_sync_failures_perfdata_only(self):
+        """Test HA sync failures stay in perfdata and do not change status."""
         client = self.create_mock_client()
         client.get_stat.return_value = {
             "hanode": {
@@ -328,11 +328,13 @@ class TestHAStatusCommand:
         command = HAStatusCommand(client, args)
         result = command.execute()
 
-        assert result.status == STATE_WARNING
-        assert "ha sync failed 5 times" in result.message
+        assert result.status == STATE_OK
+        assert "ha sync failed 5 times" not in result.message
+        assert result.perfdata["haerrsyncfailure"] == 5.0
+        assert result.perfdata["haerrproptimeout"] == 0.0
 
-    def test_ha_prop_timeout_warning(self):
-        """Test HA with propagation timeouts (WARNING)"""
+    def test_ha_prop_timeout_perfdata_only(self):
+        """Test HA propagation timeouts stay in perfdata and do not change status."""
         client = self.create_mock_client()
         client.get_stat.return_value = {
             "hanode": {
@@ -348,11 +350,13 @@ class TestHAStatusCommand:
         command = HAStatusCommand(client, args)
         result = command.execute()
 
-        assert result.status == STATE_WARNING
-        assert "ha propagation timed out 3 times" in result.message
+        assert result.status == STATE_OK
+        assert "ha propagation timed out 3 times" not in result.message
+        assert result.perfdata["haerrsyncfailure"] == 0.0
+        assert result.perfdata["haerrproptimeout"] == 3.0
 
-    def test_ha_sync_and_prop_failures(self):
-        """Test HA with both sync failures and propagation timeouts"""
+    def test_ha_sync_and_prop_failures_perfdata_only(self):
+        """Test HA sync/propagation counters stay visible as perfdata only."""
         client = self.create_mock_client()
         client.get_stat.return_value = {
             "hanode": {
@@ -368,9 +372,11 @@ class TestHAStatusCommand:
         command = HAStatusCommand(client, args)
         result = command.execute()
 
-        assert result.status == STATE_WARNING
-        assert "ha sync failed 5 times" in result.message
-        assert "ha propagation timed out 3 times" in result.message
+        assert result.status == STATE_OK
+        assert "ha sync failed 5 times" not in result.message
+        assert "ha propagation timed out 3 times" not in result.message
+        assert result.perfdata["haerrsyncfailure"] == 5.0
+        assert result.perfdata["haerrproptimeout"] == 3.0
 
     def test_ha_critical_overrides_warnings(self):
         """Test that CRITICAL state overrides WARNING from sync failures"""
@@ -388,10 +394,11 @@ class TestHAStatusCommand:
         command = HAStatusCommand(client, args)
         result = command.execute()
 
-        # PARTIALFAIL is CRITICAL, should override WARNING from sync failures
+        # PARTIALFAIL is CRITICAL regardless of sync failure counters
         assert result.status == STATE_CRITICAL
         assert "PARTIALFAIL" in result.message
-        assert "ha sync failed 5 times" in result.message
+        assert "ha sync failed 5 times" not in result.message
+        assert result.perfdata["haerrsyncfailure"] == 5.0
 
     def test_ha_response_as_list(self):
         """Test when hanode is returned as a list"""

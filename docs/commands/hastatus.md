@@ -66,9 +66,9 @@ The check monitors:
 - **Configuration mismatch**
 - **Node health**
 
+Sync failures and propagation timeouts are exposed as perfdata so you can graph or alert on them separately without changing the main HA state result.
+
 **Warning conditions:**
-- Sync failures detected
-- Propagation timeouts
 - Node in intermediate state
 
 **Critical conditions:**
@@ -78,13 +78,15 @@ The check monitors:
 ## Performance Data
 
 ```
-| hatotpktrx=packets hatotpkttx=packets hapktrxrate=rate hapkttxrate=rate
+| hatotpktrx=packets hatotpkttx=packets hapktrxrate=rate hapkttxrate=rate haerrsyncfailure=count haerrproptimeout=count
 ```
 
 - `hatotpktrx` - Total packets received
 - `hatotpkttx` - Total packets transmitted
 - `hapktrxrate` - Packet receive rate
 - `hapkttxrate` - Packet transmit rate
+- `haerrsyncfailure` - HA sync failure counter
+- `haerrproptimeout` - HA propagation timeout counter
 
 ## Advanced Usage
 

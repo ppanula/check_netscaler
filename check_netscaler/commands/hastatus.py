@@ -122,33 +122,18 @@ class HAStatusCommand(BaseCommand):
 
                 messages.append(f"hacurstate {hacurstate}")
 
-            # Check for sync failures
-            haerrsyncfailure = response.get("haerrsyncfailure", 0)
-            try:
-                sync_failures = int(haerrsyncfailure)
-                if sync_failures > 0:
-                    if worst_status < STATE_WARNING:
-                        worst_status = STATE_WARNING
-                    messages.append(f"ha sync failed {sync_failures} times")
-            except (ValueError, TypeError):
-                pass
-
-            # Check for propagation timeouts
-            haerrproptimeout = response.get("haerrproptimeout", 0)
-            try:
-                prop_timeouts = int(haerrproptimeout)
-                if prop_timeouts > 0:
-                    if worst_status < STATE_WARNING:
-                        worst_status = STATE_WARNING
-                    messages.append(f"ha propagation timed out {prop_timeouts} times")
-            except (ValueError, TypeError):
-                pass
-
             # Build performance data
             perfdata: Dict[str, float] = {}
 
-            # Add packet statistics
-            for field in ["hatotpktrx", "hatotpkttx", "hapktrxrate", "hapkttxrate"]:
+            # Add packet/error statistics
+            for field in [
+                "hatotpktrx",
+                "hatotpkttx",
+                "hapktrxrate",
+                "hapkttxrate",
+                "haerrsyncfailure",
+                "haerrproptimeout",
+            ]:
                 if field in response:
                     try:
                         value = float(response[field])
