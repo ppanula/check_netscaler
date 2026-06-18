@@ -265,6 +265,80 @@ class TestStateCommand:
         assert result.status == STATE_OK
         assert result.perfdata["ok"] == 2
 
+    def test_vpnvserver_single_up_includes_aaa_and_current_users(self):
+        """Test single vpnvserver output includes AAA sessions and current users."""
+        client = self.create_mock_client()
+        client.get_stat.return_value = {
+            "vpnvserver": [
+                {
+                    "name": "gateway1",
+                    "state": "UP",
+                    "cursslvpnusers": "663",
+                    "curtotalvpnusers": "935",
+                }
+            ]
+        }
+
+        args = self.create_args(objecttype="vpnvserver", objectname="gateway1")
+        command = StateCommand(client, args)
+        result = command.execute()
+
+        assert result.status == STATE_OK
+        assert result.message == "gateway1 state: UP, AAA Users: 663, Current Users: 935"
+        assert result.perfdata["cursslvpnusers"]["value"] == "663"
+        assert result.perfdata["curtotalvpnusers"]["value"] == "935"
+        assert result.perfdata["cursslvpnusers"]["min"] == "0"
+        assert result.perfdata["curtotalvpnusers"]["min"] == "0"
+        assert result.long_output == []
+
+    def test_vpnvserver_single_up_without_ssl_vpn_users(self):
+        """Test single vpnvserver falls back to state-only output when no user count exists."""
+        client = self.create_mock_client()
+        client.get_stat.return_value = {
+            "vpnvserver": [
+                {"name": "gateway1", "state": "UP"}
+            ]
+        }
+
+        args = self.create_args(objecttype="vpnvserver", objectname="gateway1")
+        command = StateCommand(client, args)
+        result = command.execute()
+
+        assert result.status == STATE_OK
+        assert result.message == "gateway1 state: UP"
+        assert "cursslvpnusers" not in result.perfdata
+
+    def test_vpnvserver_multiple_objects_include_user_counts_in_long_output(self):
+        """Test multi-object vpnvserver long output includes AAA/current user counts."""
+        client = self.create_mock_client()
+        client.get_stat.return_value = {
+            "vpnvserver": [
+                {
+                    "name": "gateway1",
+                    "state": "UP",
+                    "cursslvpnusers": "12",
+                    "curtotalvpnusers": "18",
+                },
+                {
+                    "name": "gateway2",
+                    "state": "DOWN",
+                    "cursslvpnusers": "0",
+                    "curtotalvpnusers": "0",
+                },
+            ]
+        }
+
+        args = self.create_args(objecttype="vpnvserver")
+        command = StateCommand(client, args)
+        result = command.execute()
+
+        assert result.status == STATE_CRITICAL
+        assert result.message == "1/2 vpnvserver CRITICAL (gateway2)"
+        assert result.long_output == [
+            "[OK] gateway1: UP, AAA Users: 12, Current Users: 18",
+            "[CRITICAL] gateway2: DOWN, AAA Users: 0, Current Users: 0",
+        ]
+
     def test_lbvserver_warns_on_degraded_health(self):
         """Test lbvserver health below 100 results in WARNING."""
         client = self.create_mock_client()

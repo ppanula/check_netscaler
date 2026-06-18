@@ -46,6 +46,17 @@ check_netscaler -C state -o lbvserver -n web_lb
 OK: web_lb state: UP, Health: 100% | 'web_lb.health'=100%;100;0;0;100 'total'=1;; 'ok'=1;; 'warning'=0;; 'critical'=0;; 'unknown'=0;; 'health'=100%;100;0;0;100
 ```
 
+### Check specific NetScaler Gateway vServer by name
+
+```bash
+check_netscaler -C state -o vpnvserver -n vpn_gateway
+```
+
+**Output:**
+```
+OK: vpn_gateway state: UP, AAA Users: 660, Current Users: 932 | 'total'=1;; 'ok'=1;; 'warning'=0;; 'critical'=0;; 'unknown'=0;; 'cursslvpnusers'=660;;;0; 'curtotalvpnusers'=932;;;0;
+```
+
 ### Check all services
 
 ```bash
@@ -177,6 +188,12 @@ For `lbvserver`, the command outputs summary counters and health percentage:
 ```
 
 Other object types keep the existing generic summary perfdata.
+
+For `vpnvserver`, the command adds both AAA sessions and current users when the API provides them:
+
+```
+| 'total'=1;; 'ok'=1;; 'warning'=0;; 'critical'=0;; 'unknown'=0;; 'cursslvpnusers'=660;;;0; 'curtotalvpnusers'=932;;;0;
+```
 
 The command outputs performance data for active connections:
 

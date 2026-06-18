@@ -135,6 +135,8 @@ class StateCommand(BaseCommand):
         """
         if objecttype == "lbvserver":
             return self._evaluate_lbvserver_states(objects)
+        if objecttype == "vpnvserver":
+            return self._evaluate_vpnvserver_states(objects)
 
         total = len(objects)
         ok_count = 0
@@ -198,6 +200,100 @@ class StateCommand(BaseCommand):
             "critical": critical_count,
             "unknown": unknown_count,
         }
+
+        return CheckResult(
+            status=overall_status,
+            message=message,
+            perfdata=perfdata,
+            long_output=long_output if len(objects) > 1 else [],
+        )
+
+    def _evaluate_vpnvserver_states(self, objects: List[Dict]) -> CheckResult:
+        """Evaluate vpnvserver state and include AAA/current user counts when available."""
+        total = len(objects)
+        ok_count = 0
+        warning_count = 0
+        critical_count = 0
+        unknown_count = 0
+
+        critical_objects = []
+        warning_objects = []
+        long_output = []
+        perfdata = {
+            "total": total,
+            "ok": 0,
+            "warning": 0,
+            "critical": 0,
+            "unknown": 0,
+        }
+
+        for obj in objects:
+            name = obj.get("name", "unknown")
+            state = str(obj.get("state", "UNKNOWN")).upper()
+            aaa_users = self._get_vpnvserver_ssl_users(obj)
+            current_users = self._get_vpnvserver_current_users(obj)
+
+            if state in self.OK_STATES:
+                ok_count += 1
+                status_str = "OK"
+            elif state in self.WARNING_STATES:
+                warning_count += 1
+                status_str = "WARNING"
+                warning_objects.append(name)
+            elif state in self.CRITICAL_STATES:
+                critical_count += 1
+                status_str = "CRITICAL"
+                critical_objects.append(name)
+            else:
+                unknown_count += 1
+                status_str = "UNKNOWN"
+                warning_objects.append(name)
+
+            detail = f"[{status_str}] {name}: {state}"
+            user_summary = self._build_vpnvserver_user_summary(aaa_users, current_users)
+            if user_summary:
+                detail += f", {user_summary}"
+            long_output.append(detail)
+
+        perfdata.update(
+            {
+                "ok": ok_count,
+                "warning": warning_count,
+                "critical": critical_count,
+                "unknown": unknown_count,
+            }
+        )
+
+        if critical_count > 0:
+            overall_status = STATE_CRITICAL
+        elif warning_count > 0 or unknown_count > 0:
+            overall_status = STATE_WARNING
+        else:
+            overall_status = STATE_OK
+
+        message = self._build_vpnvserver_message(
+            objects,
+            ok_count,
+            warning_count,
+            critical_count,
+            unknown_count,
+            critical_objects,
+            warning_objects,
+        )
+
+        if total == 1:
+            aaa_users = self._get_vpnvserver_ssl_users(objects[0])
+            current_users = self._get_vpnvserver_current_users(objects[0])
+            if aaa_users is not None:
+                perfdata["cursslvpnusers"] = {
+                    "value": self._format_metric_number(aaa_users),
+                    "min": "0",
+                }
+            if current_users is not None:
+                perfdata["curtotalvpnusers"] = {
+                    "value": self._format_metric_number(current_users),
+                    "min": "0",
+                }
 
         return CheckResult(
             status=overall_status,
@@ -356,6 +452,40 @@ class StateCommand(BaseCommand):
             warning_objects,
         )
 
+    def _build_vpnvserver_message(
+        self,
+        objects: List[Dict],
+        ok: int,
+        warning: int,
+        critical: int,
+        unknown: int,
+        critical_objects: List[str],
+        warning_objects: List[str],
+    ) -> str:
+        """Build vpnvserver-specific messages with AAA/current user counts."""
+        total = len(objects)
+        if total == 1:
+            obj = objects[0]
+            name = obj.get("name", "unknown")
+            state = str(obj.get("state", "UNKNOWN")).upper()
+            aaa_users = self._get_vpnvserver_ssl_users(obj)
+            current_users = self._get_vpnvserver_current_users(obj)
+            user_summary = self._build_vpnvserver_user_summary(aaa_users, current_users)
+            if not user_summary:
+                return f"{name} state: {state}"
+            return f"{name} state: {state}, {user_summary}"
+
+        return self._build_message(
+            "vpnvserver",
+            total,
+            ok,
+            warning,
+            critical,
+            unknown,
+            critical_objects,
+            warning_objects,
+        )
+
     def _get_lbvserver_state(self, obj: Dict[str, Any]) -> str:
         """Prefer lbvserver effectivestate when available."""
         state = obj.get("effectivestate") or obj.get("state") or "UNKNOWN"
@@ -380,6 +510,41 @@ class StateCommand(BaseCommand):
         if float(health).is_integer():
             return f"{int(health)}%"
         return f"{health:g}%"
+
+    def _get_vpnvserver_ssl_users(self, obj: Dict[str, Any]) -> Optional[float]:
+        """Return current AAA/SSL VPN sessions when provided by the API."""
+        value = obj.get("cursslvpnusers")
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _get_vpnvserver_current_users(self, obj: Dict[str, Any]) -> Optional[float]:
+        """Return current total users on the gateway when provided by the API."""
+        value = obj.get("curtotalvpnusers")
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _build_vpnvserver_user_summary(
+        self, aaa_users: Optional[float], current_users: Optional[float]
+    ) -> str:
+        """Build the vpnvserver user count suffix for status output."""
+        parts = []
+        if aaa_users is not None:
+            parts.append(f"AAA Users: {self._format_metric_number(aaa_users)}")
+        if current_users is not None:
+            parts.append(f"Current Users: {self._format_metric_number(current_users)}")
+        return ", ".join(parts)
+
+    def _format_metric_number(self, value: float) -> str:
+        """Format numeric metric values without unnecessary trailing zeros."""
+        return f"{value:g}"
 
     def _build_lbvserver_health_perfdata(
         self, health: float, warning_threshold: float, critical_threshold: float
